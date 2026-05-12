@@ -31,26 +31,29 @@ jobs:
           repository: alembic/alembic
           path: alembic_src  # 앨램빅 소스를 별도 폴더에 다운로드
 
+      - name: Patch Alembic CMake (Remove PyImath Dependency)
+        run: |
+          # PyAlembic에서 PyImath를 강제로 찾고 링크하는 부분을 삭제/수정합니다.
+          sed -i 's/INCLUDE(AlembicPyIlmBase)//g' alembic_src/python/PyAlembic/CMakeLists.txt
+          sed -i 's/${PYIMATH_LIBRARIES}//g' alembic_src/python/PyAlembic/CMakeLists.txt
+          # 에러가 났던 TARGET_LINK_LIBRARIES 부분에서 Imath 타겟 제거
+          sed -i 's/Imath::PyImath_Python${PYALEMBIC_PYTHON_VERSION}//g' alembic_src/python/PyAlembic/CMakeLists.txt
+
       - name: Build Alembic & PyAlembic
         run: |
           mkdir build && cd build
-          # 현재 매트릭스의 파이썬 경로를 정확히 변수에 담습니다.
           PY_EXE=$(which python)
-          PY_INC=$(python -c "import sysconfig; print(sysconfig.get_path('include'))")
-          PY_VER=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-
+          
           cmake ../alembic_src \
             -DCMAKE_INSTALL_PREFIX=./install \
             -DPYTHON_EXECUTABLE=$PY_EXE \
-            -DPYTHON_INCLUDE_DIR=$PY_INC \
             -DUSE_PYALEMBIC=ON \
             -DUSE_PYIMATH=OFF \
             -DUSE_TESTS=OFF \
-            -DALEMBIC_SHARED_LIBS=ON \
-            -DPYALEMBIC_PYTHON_VERSION=$PY_VER \
-            -DBoost_PYTHON_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libboost_python${PY_VER/./}.so
+            -DALEMBIC_SHARED_LIBS=ON
           
           make -j$(nproc)
+
       # 3. 결과물 확인 및 업로드
       - name: List and Upload Artifacts
         run: |
