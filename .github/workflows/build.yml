@@ -22,23 +22,27 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential libboost-python-dev libimath-dev libalembic-dev python3-dev
+          # alembic-dev 대신 필수 빌드 도구와 Imath, Boost만 설치
+          sudo apt-get install -y cmake build-essential libboost-python-dev libboost-thread-dev libimath-dev python3-dev
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Checkout Alembic Source
+        uses: actions/checkout@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          # cache: 'pip' 를 삭제하여 에러 방지
+          repository: alembic/alembic
+          path: alembic_src  # 앨램빅 소스를 별도 폴더에 다운로드
 
-      # 2. PyAlembic 소스 가져오기 및 빌드
-      # (기존에 맥에서 빌드할 때 쓰신 소스 폴더가 있다면 그 경로를 지정하세요)
-      - name: Build PyAlembic (.so)
+      - name: Build Alembic & PyAlembic
         run: |
           mkdir build && cd build
-          cmake .. \
+          # 직접 다운로드한 소스 경로(../alembic_src)를 지정하여 빌드
+          cmake ../alembic_src \
             -DPYTHON_EXECUTABLE=$(which python) \
             -DUSE_PYALEMBIC=ON \
-            -DUSE_PYIMATH=ON
+            -DUSE_PYIMATH=ON \
+            -DALEMBIC_SHARED_LIBS=ON \
+            -DILMBASE_ROOT=/usr \
+            -DPYTHON_INCLUDE_DIR=$(python -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") \
+            -DPYTHON_LIBRARY=$(python -c "import os, sysconfig; print(os.path.join(sysconfig.get_config_var('LIBDIR'), sysconfig.get_config_var('INSTSONAME')))")
           make -j$(nproc)
 
       # 3. 결과물 확인 및 업로드
