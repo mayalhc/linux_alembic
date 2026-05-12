@@ -3,8 +3,6 @@ name: Linux pyalembic Build (Python 3.11 & 3.13)
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -14,39 +12,43 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11", "3.13"]
-      fail-fast: false   # 한 버전 실패해도 다른 버전은 계속 실행
+      fail-fast: false
 
     steps:
-      - name: Checkout repository
+      - name: Checkout GroomForge Repository
         uses: actions/checkout@v4
+
+      # 1. 시스템 의존성 설치 (리눅스 빌드 필수)
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libboost-python-dev libimath-dev libalembic-dev python3-dev
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'                    # pip 캐시로 빌드 속도 향상
+          # cache: 'pip' 를 삭제하여 에러 방지
 
-      - name: Upgrade pip & install build tools
+      # 2. PyAlembic 소스 가져오기 및 빌드
+      # (기존에 맥에서 빌드할 때 쓰신 소스 폴더가 있다면 그 경로를 지정하세요)
+      - name: Build PyAlembic (.so)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade build setuptools wheel
+          mkdir build && cd build
+          cmake .. \
+            -DPYTHON_EXECUTABLE=$(which python) \
+            -DUSE_PYALEMBIC=ON \
+            -DUSE_PYIMATH=ON
+          make -j$(nproc)
 
-      - name: Install project dependencies (optional)
+      # 3. 결과물 확인 및 업로드
+      - name: List and Upload Artifacts
         run: |
-          # requirements.txt가 있다면 설치 (없으면 스킵)
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-          # 개발 의존성이나 테스트 의존성이 pyproject.toml에 있다면
-          # pip install -e ".[dev]" 또는 pip install -e ".[test]" 로 변경 가능
-
-      - name: Build pyalembic package (sdist + wheel)
-        run: |
-          python -m build --no-isolation
-          echo "✅ Build completed for Python ${{ matrix.python-version }}"
-
-      - name: List built artifacts
-        run: |
-          ls -lh dist/
-          echo "📦 Built files:"
-          ls dist/
+          ls -lh build/*.so
+          echo "✅ .so files generated!"
+          
+      - name: Upload Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-alembic-py${{ matrix.python-version }}
+          path: build/*.so
