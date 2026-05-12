@@ -59,18 +59,32 @@ jobs:
           make -j$(nproc)
           make install   # ← 추가! libAlembic.so 등 설치 파일 생성
 
-      - name: List All Generated Files
+      - name: Prepare Final Package
         run: |
-          echo "=== 모든 .so 파일 목록 ==="
-          find build -name "*.so*" -type f | sort
-          echo "=== install 디렉토리 내용 ==="
-          ls -lhR build/install 2>/dev/null || echo "install dir not found"
+          mkdir -p final_package/lib
+          
+          # 1. 파이썬 바인딩 모듈 복사 (이름을 alembic.so로 통일)
+          cp build/python/PyAlembic/alembic*.so final_package/alembic.so
+          
+          # 2. 핵심 엔진 라이브러리(Alembic) 복사
+          find build -name "libAlembic.so*" -exec cp -v {} final_package/lib/ \;
+          
+          # 3. 필수 수학 라이브러리(Imath) 복사
+          find build -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
+          find /usr/lib/x86_64-linux-gnu/ -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
+          
+          # 4. 부스트 파이썬 라이브러리 복사 (해당 파이썬 버전용)
+          find /usr/lib/x86_64-linux-gnu/ -name "libboost_python${{ matrix.python-version }}*.so*" -exec cp -v {} final_package/lib/ \;
 
-      - name: Upload Build Artifacts
+          # 5. RPATH 설정 (alembic.so가 옆의 lib 폴더를 참조하게 고정)
+          sudo apt-get install -y patchelf
+          patchelf --set-rpath '$ORIGIN/lib' final_package/alembic.so
+          
+          echo "=== Final Package Structure ==="
+          ls -R final_package/
+
+      - name: Upload Final Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-alembic-py${{ matrix.python-version }}
-          path: |
-            build/install/**
-            build/**/*.so* # 빌드 폴더 내의 모든 .so 및 .so.X.X 파일 포함
-            build/python/PyAlembic/*.so
+          name: GroomForge-Linux-py${{ matrix.python-version }}
+          path: final_package/
