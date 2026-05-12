@@ -72,4 +72,5 @@ jobs:
           name: linux-alembic-py${{ matrix.python-version }}
           path: |
             build/install/**
+            build/**/*.so* # 빌드 폴더 내의 모든 .so 및 .so.X.X 파일 포함
             build/python/PyAlembic/*.so
