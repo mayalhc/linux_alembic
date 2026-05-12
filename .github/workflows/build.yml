@@ -34,17 +34,23 @@ jobs:
       - name: Build Alembic & PyAlembic
         run: |
           mkdir build && cd build
-          # 직접 다운로드한 소스 경로(../alembic_src)를 지정하여 빌드
-          cmake ../alembic_src \
-            -DPYTHON_EXECUTABLE=$(which python) \
-            -DUSE_PYALEMBIC=ON \
-            -DUSE_PYIMATH=ON \
-            -DALEMBIC_SHARED_LIBS=ON \
-            -DILMBASE_ROOT=/usr \
-            -DPYTHON_INCLUDE_DIR=$(python -c "from distutils.sysconfig import get_python_inc; print(get_python_inc())") \
-            -DPYTHON_LIBRARY=$(python -c "import os, sysconfig; print(os.path.join(sysconfig.get_config_var('LIBDIR'), sysconfig.get_config_var('INSTSONAME')))")
-          make -j$(nproc)
+          # 현재 매트릭스의 파이썬 경로를 정확히 변수에 담습니다.
+          PY_EXE=$(which python)
+          PY_INC=$(python -c "import sysconfig; print(sysconfig.get_path('include'))")
+          PY_VER=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 
+          cmake ../alembic_src \
+            -DCMAKE_INSTALL_PREFIX=./install \
+            -DPYTHON_EXECUTABLE=$PY_EXE \
+            -DPYTHON_INCLUDE_DIR=$PY_INC \
+            -DUSE_PYALEMBIC=ON \
+            -DUSE_PYIMATH=OFF \
+            -DUSE_TESTS=OFF \
+            -DALEMBIC_SHARED_LIBS=ON \
+            -DPYALEMBIC_PYTHON_VERSION=$PY_VER \
+            -DBoost_PYTHON_LIBRARY_RELEASE=/usr/lib/x86_64-linux-gnu/libboost_python${PY_VER/./}.so
+          
+          make -j$(nproc)
       # 3. 결과물 확인 및 업로드
       - name: List and Upload Artifacts
         run: |
