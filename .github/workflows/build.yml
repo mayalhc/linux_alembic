@@ -18,30 +18,40 @@ jobs:
       - name: Checkout GroomForge Repository
         uses: actions/checkout@v4
 
-      # 1. 시스템 의존성 설치 (리눅스 빌드 필수)
+      # 1. Python 버전 설정 (matrix에 따라 정확한 Python 사용)
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 2. 시스템 의존성 설치 (Imath + Boost만 설치, PyImath는 의도적으로 제외)
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          # alembic-dev 대신 필수 빌드 도구와 Imath, Boost만 설치
-          sudo apt-get install -y cmake build-essential libboost-python-dev libboost-thread-dev libimath-dev python3-dev
+          sudo apt-get install -y cmake build-essential libboost-python-dev libboost-thread-dev libimath-dev
 
       - name: Checkout Alembic Source
         uses: actions/checkout@v4
         with:
           repository: alembic/alembic
-          path: alembic_src  # 앨램빅 소스를 별도 폴더에 다운로드
+          path: alembic_src
 
+      # 3. PyImath 의존성 완전 제거 패치 (기존 sed가 동작하지 않았던 이유 수정)
       - name: Patch Alembic CMake (Remove PyImath Dependency)
         run: |
-          # PyAlembic에서 PyImath를 강제로 찾고 링크하는 부분을 삭제/수정합니다.
-          sed -i 's/INCLUDE(AlembicPyIlmBase)//g' alembic_src/python/PyAlembic/CMakeLists.txt
-          sed -i 's/${PYIMATH_LIBRARIES}//g' alembic_src/python/PyAlembic/CMakeLists.txt
-          # 에러가 났던 TARGET_LINK_LIBRARIES 부분에서 Imath 타겟 제거
-          sed -i 's/Imath::PyImath_Python${PYALEMBIC_PYTHON_VERSION}//g' alembic_src/python/PyAlembic/CMakeLists.txt
+          # AlembicPyIlmBase.cmake include 제거 (PyImath_FIND가 실행되지 않도록)
+          sed -i '/INCLUDE.*AlembicPyIlmBase.cmake/d' alembic_src/python/PyAlembic/CMakeLists.txt
+          
+          # TARGET_LINK_LIBRARIES에서 ${ALEMBIC_PYIMATH_LIB} 라인 완전 제거
+          # (이전 sed는 변수명/경로가 맞지 않아 아무것도 제거되지 않았음)
+          sed -i '/${ALEMBIC_PYIMATH_LIB}/d' alembic_src/python/PyAlembic/CMakeLists.txt
+          
+          echo "=== Patched PyAlembic/CMakeLists.txt ==="
+          sed -n '120,160p' alembic_src/python/PyAlembic/CMakeLists.txt
 
       - name: Build Alembic & PyAlembic
         run: |
-          mkdir build && cd build
+          mkdir -p build && cd build
           PY_EXE=$(which python)
           
           cmake ../alembic_src \
@@ -50,18 +60,20 @@ jobs:
             -DUSE_PYALEMBIC=ON \
             -DUSE_PYIMATH=OFF \
             -DUSE_TESTS=OFF \
-            -DALEMBIC_SHARED_LIBS=ON
+            -DALEMBIC_SHARED_LIBS=ON \
+            -DCMAKE_BUILD_TYPE=Release
           
           make -j$(nproc)
 
-      # 3. 결과물 확인 및 업로드
+      # 4. 결과물 확인 (PyAlembic .so는 build/python/PyAlembic/ 아래에 생성됨)
       - name: List and Upload Artifacts
         run: |
-          ls -lh build/*.so
-          echo "✅ .so files generated!"
-          
+          echo "=== Generated Python bindings ==="
+          ls -lh build/python/PyAlembic/*.so || echo "No .so found (check path)"
+          find build -name "*.so" -type f | head -10
+
       - name: Upload Build
         uses: actions/upload-artifact@v4
         with:
           name: linux-alembic-py${{ matrix.python-version }}
-          path: build/*.so
+          path: build/python/PyAlembic/*.so
