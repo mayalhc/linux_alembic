@@ -1,29 +1,52 @@
+name: Linux pyalembic Build (Python 3.11 & 3.13)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
 jobs:
-  build-linux:
+  build:
+    name: Build on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux2014_x86_64 # 호환성 끝판왕 이미지
     
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+      fail-fast: false   # 한 버전 실패해도 다른 버전은 계속 실행
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
-        run: |
-          yum install -y cmake boost-devel imath-devel zlib-devel
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'                    # pip 캐시로 빌드 속도 향상
 
-          /opt/python/cp311-cp311/bin/pip install numpy
-
-      - name: Build Alembic with Python Bindings
+      - name: Upgrade pip & install build tools
         run: |
-          git clone https://github.com
-          cd alembic
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_INSTALL_PREFIX=./install \
-            -DUSE_PYALEMBIC=ON \
-            -DUSE_PYIMATH=ON \
-            -DPYTHON_EXECUTABLE=/opt/python/cp311-cp311/bin/python \
-            -DALEMBIC_LIB_INSTALL_DIR=lib \
-            -DPYALEMBIC_PYTHON_VERSION=3.11
-          make -j$(nproc)
-          make install
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade build setuptools wheel
+
+      - name: Install project dependencies (optional)
+        run: |
+          # requirements.txt가 있다면 설치 (없으면 스킵)
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # 개발 의존성이나 테스트 의존성이 pyproject.toml에 있다면
+          # pip install -e ".[dev]" 또는 pip install -e ".[test]" 로 변경 가능
+
+      - name: Build pyalembic package (sdist + wheel)
+        run: |
+          python -m build --no-isolation
+          echo "✅ Build completed for Python ${{ matrix.python-version }}"
+
+      - name: List built artifacts
+        run: |
+          ls -lh dist/
+          echo "📦 Built files:"
+          ls dist/
