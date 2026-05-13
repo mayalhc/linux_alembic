@@ -15,7 +15,15 @@ jobs:
         uses: actions/checkout@v4
 
       # ============================================================
-      # Install Build Packages
+      # Python 3.13 (FULL DEV HEADERS)
+      # ============================================================
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # ============================================================
+      # Install Build Dependencies
       # ============================================================
       - name: Install Dependencies
         shell: bash
@@ -35,7 +43,6 @@ jobs:
             tar \
             xz-utils \
             pkg-config \
-            libz-dev \
             zlib1g-dev \
             libbz2-dev \
             liblzma-dev \
@@ -45,41 +52,27 @@ jobs:
             libimath-dev
 
       # ============================================================
-      # Install Blender 5.1
+      # Verify Python
       # ============================================================
-      - name: Install Blender 5.1
+      - name: Verify Python
         shell: bash
         run: |
           set -eux
 
-          BLENDER_URL="https://download.blender.org/release/Blender5.1/blender-5.1.1-linux-x64.tar.xz"
+          which python
 
-          mkdir -p $HOME/blender
+          python --version
 
-          curl -L "$BLENDER_URL" -o blender.tar.xz
+          python -c "
+import sys
+import sysconfig
 
-          tar -xf blender.tar.xz \
-            -C $HOME/blender \
-            --strip-components=1
+print('Executable:', sys.executable)
+print('Include:', sysconfig.get_paths()['include'])
+"
 
-          echo "BLENDER_DIR=$HOME/blender" >> $GITHUB_ENV
-          echo "BLENDER_BIN=$HOME/blender/blender" >> $GITHUB_ENV
-
-      # ============================================================
-      # Detect Blender Python 3.13
-      # ============================================================
-      - name: Detect Blender Python
-        shell: bash
-        run: |
-          set -eux
-
-          PYTHON_BIN=$(
-            find $HOME/blender -type f | grep "python/bin/python3.13" | head -n 1
-          )
-
-          echo "PYTHON_BIN=$PYTHON_BIN" >> $GITHUB_ENV
-
-          "$PYTHON_BIN" --version
+          find $(python -c "import sysconfig; print(sysconfig.get_paths()['include'])") \
+            -name pyconfig.h
 
       # ============================================================
       # Build Boost Python 3.13
@@ -90,17 +83,17 @@ jobs:
           set -eux
 
           BOOST_VERSION=1.86.0
-          BOOST_DIR=$HOME/boost_1_86_0
+          BOOST_FOLDER=boost_1_86_0
 
           curl -L \
-            https://archives.boost.io/release/1.86.0/source/boost_1_86_0.tar.gz \
+            https://archives.boost.io/release/1.86.0/source/${BOOST_FOLDER}.tar.gz \
             -o boost.tar.gz
 
-          tar -xf boost.tar.gz -C $HOME
+          tar -xf boost.tar.gz
 
-          cd $BOOST_DIR
+          cd ${BOOST_FOLDER}
 
-          PYTHON_ROOT=$(dirname $(dirname "$PYTHON_BIN"))
+          PYTHON_BIN=$(which python)
 
           ./bootstrap.sh \
             --with-python="$PYTHON_BIN"
@@ -118,7 +111,19 @@ jobs:
 
           echo "BOOST_ROOT=$HOME/boost-install" >> $GITHUB_ENV
 
-          ls -la $HOME/boost-install/lib || true
+          ls -la $HOME/boost-install/lib
+
+      # ============================================================
+      # Verify Boost Python 313
+      # ============================================================
+      - name: Verify Boost Python
+        shell: bash
+        run: |
+          set -eux
+
+          ls -la $HOME/boost-install/lib
+
+          find $HOME/boost-install/lib | grep boost_python || true
 
       # ============================================================
       # Clone Alembic
@@ -135,7 +140,7 @@ jobs:
       # ============================================================
       # Configure Alembic
       # ============================================================
-      - name: Configure Alembic CP313
+      - name: Configure Alembic
         shell: bash
         run: |
           set -eux
@@ -144,6 +149,12 @@ jobs:
 
           cd alembic/build
 
+          PYTHON_BIN=$(which python)
+
+          BOOST_LIB=$(find $HOME/boost-install/lib | grep "boost_python313" | head -n 1)
+
+          echo "BOOST_LIB=$BOOST_LIB"
+
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -151,14 +162,14 @@ jobs:
             -DALEMBIC_SHARED_LIBS=ON \
             -DPYTHON_EXECUTABLE="$PYTHON_BIN" \
             -DPython3_EXECUTABLE="$PYTHON_BIN" \
-            -DBOOST_ROOT="$BOOST_ROOT" \
+            -DBOOST_ROOT="$HOME/boost-install" \
             -DBoost_NO_SYSTEM_PATHS=ON \
             -DBoost_USE_STATIC_LIBS=OFF \
             -DBoost_USE_MULTITHREADED=ON \
             -DBoost_USE_STATIC_RUNTIME=OFF \
-            -DBoost_INCLUDE_DIR="$BOOST_ROOT/include" \
-            -DBoost_LIBRARY_DIR="$BOOST_ROOT/lib" \
-            -DBoost_PYTHON_LIBRARY="$BOOST_ROOT/lib/libboost_python313.so"
+            -DBoost_INCLUDE_DIR="$HOME/boost-install/include" \
+            -DBoost_LIBRARY_DIR="$HOME/boost-install/lib" \
+            -DBoost_PYTHON_LIBRARY="$BOOST_LIB"
 
       # ============================================================
       # Build Alembic
@@ -173,18 +184,14 @@ jobs:
           ninja -j$(nproc)
 
       # ============================================================
-      # Verify Build
+      # Verify CP313 ABI
       # ============================================================
-      - name: Verify CP313 Build
+      - name: Verify Alembic ABI
         shell: bash
         run: |
           set -eux
 
-          cd alembic/build
-
-          find . -name "*.so"
-
-          ALEMBIC_SO=$(find . | grep "cpython-313.*\.so" | head -n 1)
+          ALEMBIC_SO=$(find alembic/build | grep "cpython-313.*\.so" | head -n 1)
 
           echo "ALEMBIC_SO=$ALEMBIC_SO"
 
@@ -203,7 +210,7 @@ jobs:
           ldd "$ALEMBIC_SO" | grep python || true
 
       # ============================================================
-      # Package
+      # Package linux_313
       # ============================================================
       - name: Package linux_313
         shell: bash
@@ -225,7 +232,7 @@ jobs:
           ls -la linux_313
 
       # ============================================================
-      # Upload
+      # Upload Artifact
       # ============================================================
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
