@@ -69,16 +69,18 @@ jobs:
           # 2. 핵심 엔진 라이브러리(Alembic) 복사
           find build -name "libAlembic.so*" -exec cp -v {} final_package/lib/ \;
           
-          # 3. 필수 수학 라이브러리(Imath) 복사
+          # 3. 필수 수학 라이브러리(Imath) 복사 (빌드 폴더 + 시스템 경로)
           find build -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
           find /usr/lib/x86_64-linux-gnu/ -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
           
-          # 4. 부스트 파이썬 라이브러리 복사 (해당 파이썬 버전용)
-          find /usr/lib/x86_64-linux-gnu/ -name "libboost_python${{ matrix.python-version }}*.so*" -exec cp -v {} final_package/lib/ \;
-
-          # 5. RPATH 설정 (alembic.so가 옆의 lib 폴더를 참조하게 고정)
-          sudo apt-get install -y patchelf
-          patchelf --set-rpath '$ORIGIN/lib' final_package/alembic.so
+          # 4. [수정] 부스트 파이썬 라이브러리 복사
+          # matrix 버전뿐만 아니라 시스템에 깔린 boost_python 관련 파일을 모두 긁어모읍니다.
+          find /usr/lib/x86_64-linux-gnu/ -name "libboost_python*.so*" -exec cp -v {} final_package/lib/ \;
+          
+          # 5. RPATH 설정 (alembic.so가 옆의 lib 폴더를 최우선으로 참조하게 고정)
+          sudo apt-get update && sudo apt-get install -y patchelf
+          # $ORIGIN (현재폴더)와 $ORIGIN/lib (하부폴더) 둘 다 뒤지도록 설정
+          patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' final_package/alembic.so
           
           echo "=== Final Package Structure ==="
           ls -R final_package/
