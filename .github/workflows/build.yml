@@ -54,10 +54,13 @@ jobs:
             -DUSE_PYIMATH=OFF \
             -DUSE_TESTS=OFF \
             -DALEMBIC_SHARED_LIBS=ON \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPYIMATH_LIBRARIES="" \
+            -DPYIMATH_INCLUDE_DIR=""
           
           make -j$(nproc)
-          make install   # ← 추가! libAlembic.so 등 설치 파일 생성
+          make install
+
 
       - name: Prepare Final Package
         run: |
