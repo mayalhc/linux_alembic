@@ -69,7 +69,7 @@ jobs:
           "
 
       # ============================================================
-      # Build Boost Python 3.13 (최신 버전 + 버전 강제 지정)
+      # Build Boost Python 3.13
       # ============================================================
       - name: Build Boost Python 3.13
         shell: bash
@@ -89,7 +89,6 @@ jobs:
 
           PYTHON_BIN=$(which python)
 
-          # Python 3.13 강제 인식 (312 오인식 방지)
           ./bootstrap.sh \
             --with-python="$PYTHON_BIN" \
             --with-python-version=3.13
@@ -117,6 +116,15 @@ jobs:
         run: |
           set -eux
           ls -la $HOME/boost-install/lib | grep -E "boost_python3(12|13)" || true
+
+      # ============================================================
+      # Install NumPy (Imath PyImathNumpy 빌드에 필수)
+      # ============================================================
+      - name: Install NumPy for Imath
+        shell: bash
+        run: |
+          set -eux
+          python -m pip install numpy
 
       # ============================================================
       # Build Imath (with PyImath)
@@ -149,6 +157,8 @@ jobs:
           ninja install
 
           echo "IMATH_ROOT=$HOME/imath-install" >> $GITHUB_ENV
+
+          ls -la $HOME/imath-install/lib
 
       # ============================================================
       # Clone Alembic
@@ -210,9 +220,10 @@ jobs:
         run: |
           set -eux
 
-          ALEMBIC_SO=$(find alembic/build -name "alembic*.cpython-313*.so" | head -n 1)
+          ALEMBIC_SO=$(find alembic/build -name "*cpython-313*.so" | head -n 1)
           echo "ALEMBIC_SO=$ALEMBIC_SO"
 
+          echo "=== LDD CHECK ==="
           ldd "$ALEMBIC_SO" | grep -E 'boost|python|Imath|Half|PyImath' || true
 
       # ============================================================
@@ -225,13 +236,18 @@ jobs:
 
           mkdir -p linux_313
 
-          ALEMBIC_SO=$(find alembic/build -name "alembic*.cpython-313*.so" | head -n 1)
+          ALEMBIC_SO=$(find alembic/build -name "*cpython-313*.so" | head -n 1)
           cp "$ALEMBIC_SO" linux_313/
 
+          # Alembic core
           find alembic/build -name "libAlembic.so*" -exec cp {} linux_313/ \;
+
+          # Imath + PyImath (필수)
           cp $HOME/imath-install/lib/libImath*.so* linux_313/ || true
           cp $HOME/imath-install/lib/libHalf*.so* linux_313/ || true
           cp $HOME/imath-install/lib/libPyImath*.so* linux_313/ || true
+
+          # Boost Python
           cp $HOME/boost-install/lib/libboost_python313.so* linux_313/ || true
 
           ls -la linux_313
