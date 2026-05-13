@@ -87,18 +87,28 @@ jobs:
           find build -name "libAlembic.so*" -exec cp -v {} final_package/lib/ \;
           find build -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
           
-          # 파이썬 엔진(.so) 복사 부분 수정
+          # 파이썬 엔진(.so) 복사
           if [ "${{ matrix.python-version }}" == "3.13" ]; then
-            cp -v $B_PY_LIB/libpython3.13.so* final_package/lib/
+            # 변수가 비어있을 경우를 대비해 다시 한번 경로를 탐색하여 복사
+            FINAL_B_PY_LIB=$(dirname $(find ~/blender_env -name libpython3.13.so.1.0 | head -n 1))
+            if [ -z "$FINAL_B_PY_LIB" ]; then
+                echo "❌ Error: libpython3.13 not found in blender_env"
+                exit 1
+            fi
+            cp -v $FINAL_B_PY_LIB/libpython3.13.so* final_package/lib/
           else
+            # 3.11 시스템 파이썬 복사
             find /opt/hostedtoolcache/Python/ -name "libpython3.11*.so*" -exec cp -v {} final_package/lib/ \;
           fi
           
+          # 부스트 라이브러리 및 RPATH 설정
           find /usr/lib/x86_64-linux-gnu/ -name "libboost_python*.so*" -exec cp -v {} final_package/lib/ \;
+          sudo apt-get update && sudo apt-get install -y patchelf
           patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' final_package/alembic.so
-
+          
+          echo "=== 최종 패키지 구조 ==="
           ls -R final_package/
-
+          
       - name: Upload Final Artifact
         uses: actions/upload-artifact@v4
         with:
