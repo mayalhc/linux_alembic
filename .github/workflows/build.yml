@@ -63,28 +63,28 @@ jobs:
         run: |
           mkdir -p final_package/lib
           
-          # 1. 파이썬 바인딩 모듈 복사 (이름을 alembic.so로 통일)
+          # 1. 파이썬 바인딩 모듈 복사
           cp build/python/PyAlembic/alembic*.so final_package/alembic.so
           
-          # 2. 핵심 엔진 라이브러리(Alembic) 복사
+          # 2. 엔진 라이브러리(Alembic, Imath) 복사
           find build -name "libAlembic.so*" -exec cp -v {} final_package/lib/ \;
-          
-          # 3. 필수 수학 라이브러리(Imath) 복사 (빌드 폴더 + 시스템 경로)
           find build -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
-          find /usr/lib/x86_64-linux-gnu/ -name "libImath*.so*" -exec cp -v {} final_package/lib/ \;
           
-          # 4. [수정] 부스트 파이썬 라이브러리 복사
-          # matrix 버전뿐만 아니라 시스템에 깔린 boost_python 관련 파일을 모두 긁어모읍니다.
+          # 3. [추가] libpython 파일 긁어오기
+          # 빌드 서버가 사용하는 해당 파이썬 버전의 .so 파일을 찾아서 복사합니다.
+          find /opt/hostedtoolcache/Python/ -name "libpython${{ matrix.python-version }}*.so*" -exec cp -v {} final_package/lib/ \;
+          find /usr/lib/x86_64-linux-gnu/ -name "libpython${{ matrix.python-version }}*.so*" -exec cp -v {} final_package/lib/ \;
+          
+          # 4. 부스트 라이브러리 복사
           find /usr/lib/x86_64-linux-gnu/ -name "libboost_python*.so*" -exec cp -v {} final_package/lib/ \;
           
-          # 5. RPATH 설정 (alembic.so가 옆의 lib 폴더를 최우선으로 참조하게 고정)
+          # 5. RPATH 설정
           sudo apt-get update && sudo apt-get install -y patchelf
-          # $ORIGIN (현재폴더)와 $ORIGIN/lib (하부폴더) 둘 다 뒤지도록 설정
           patchelf --set-rpath '$ORIGIN:$ORIGIN/lib' final_package/alembic.so
           
-          echo "=== Final Package Structure ==="
+          echo "=== 모든 부품이 포함된 패키지 목록 ==="
           ls -R final_package/
-
+          
       - name: Upload Final Artifact
         uses: actions/upload-artifact@v4
         with:
